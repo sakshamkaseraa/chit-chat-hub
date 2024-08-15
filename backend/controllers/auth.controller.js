@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import User from "../models/user.model.js";
+import axios from 'axios';
 import generateTokenAndSetCookie from "../utils/generateToken.js";
 
 export const signup = async (req, res) => {
@@ -19,21 +20,46 @@ export const signup = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        const boyProfilePic = `https://avatar.iran.liara.run/public/boy?username=${username}`;
-        const girlProfilePic = `https://avatar.iran.liara.run/public/girl?username=${username}`;
+        // Function to fetch profile picture based on gender
+        async function getProfilePicture(gender) {
+            try {
+                const url = gender === 'male'
+                    ? 'https://xsgames.co/randomusers/avatar.php?g=male'
+                    : 'https://xsgames.co/randomusers/avatar.php?g=female';
 
-        const newUser = new User({
-            fullName,
-            username,
-            password: hashedPassword,
-            gender,
-            profilePic: gender === "male" ? boyProfilePic : girlProfilePic,
-        });
+                const response = await axios.get(url, {
+                    responseType: 'arraybuffer',
+                });
+
+                const imageURL = response.request.res.responseUrl;
+
+                return imageURL;
+            } catch (error) {
+                console.error('Error fetching avatar:', error.message);
+                return null;
+            }
+        }
+
+        // Function to create a new user
+        async function createUser(fullName, username, hashedPassword, gender) {
+            const profilePic = await getProfilePicture(gender);
+
+            const newUser = new User({
+                fullName,
+                username,
+                password: hashedPassword,
+                gender,
+                profilePic,
+            });
+
+            await newUser.save();
+            return newUser;
+        }
+
+        const newUser = await createUser(fullName, username, hashedPassword, gender);
 
         if (newUser) {
-            // Generate JWT token here
             generateTokenAndSetCookie(newUser._id, res);
-            await newUser.save();
 
             res.status(201).json({
                 _id: newUser._id,
@@ -49,6 +75,7 @@ export const signup = async (req, res) => {
         res.status(500).json({ error: "Internal Server Error" });
     }
 };
+
 
 export const login = async (req, res) => {
     try {
